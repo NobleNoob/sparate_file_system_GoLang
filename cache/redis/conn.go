@@ -13,6 +13,7 @@ var (
 	redisPass="wangyiku1"
 )
 
+//noinspection GoTypesCompatibility
 func newRedisPool() *redis.Pool {
 	return &redis.Pool{
 
