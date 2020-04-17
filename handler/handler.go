@@ -63,8 +63,33 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 		if cfg.CurrentStoreType == cmn.StoreS3 {
 			data, _ := ioutil.ReadAll(newFile)
 			s3Path := "/files/" + fileMeta.FileSha1
-			_ = localS3.PutObject("test1", s3Path, data)
-			fileMeta.FileLocation = s3Path
+			if !cfg.AsyncTransferEnable {
+				// 设置S3 bucket
+				err = localS3.PutObject("test1", s3Path, data)
+				if err != nil {
+					fmt.Println(err.Error())
+					w.Write([]byte("Upload failed!"))
+					return
+				}
+				fileMeta.FileLocation = s3Path
+			} else {
+
+				data := mq.TransferData{
+					FileHash:      fileMeta.FileSha1,
+					CurLocation:   fileMeta.FileLocation,
+					DestLocation:  s3Path,
+					DestStoreType: cmn.StoreS3,
+				}
+				pubData, _ := json.Marshal(data)
+				pubSuc := mq.Publish(
+					cfg.TransExchangeName,
+					cfg.TransS3RoutingKey,
+					pubData,
+				)
+				if !pubSuc {
+					// TODO: 当前发送转移信息失败，稍后重试
+				}
+			}
 		}
 		// TODO: 处理异常情况，比如跳转到一个上传失败页面
 		_ = meta.SetFileMetaDB(fileMeta)
