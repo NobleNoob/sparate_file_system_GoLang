@@ -87,29 +87,24 @@ func PostSignInHandler(c *gin.Context) {
 		Code: 0,
 		Msg:  "OK",
 		Data: struct {
-			Location string
-			Username string
 			Token    string
+			Username string
+			Location string
 		}{
-			Location: "/static/view/home.html",
+			Token: token,
 			Username: username,
-			Token:    token,
+			Location: "/static/view/home.html",
 		},
 	}
-	c.JSON(http.StatusOK,gin.H{
-		"msg": "Login Success",
-		"code": 0,
-	})
 	c.Data(http.StatusOK,"application/json",resp.JSONBytes())
 }
 
 // UserInfoHandler ： 查询用户信息
 //noinspection GoUnresolvedReference
-func UserInfoHandler(w http.ResponseWriter, r *http.Request) {
+func UserInfoHandler(c *gin.Context) {
 	// 1. 解析请求参数
-	r.ParseForm()
-	username := r.Form.Get("username")
-	//	token := r.Form.Get("token")
+	username := c.Request.FormValue("username")
+	//	token := c.Request.FormValue("token")
 
 	// // 2. 验证token是否有效
 	// isValidToken := IsTokenValid(token)
@@ -121,7 +116,8 @@ func UserInfoHandler(w http.ResponseWriter, r *http.Request) {
 	// 3. 查询用户信息
 	user, err := dblayer.GetUserInfo(username)
 	if err != nil {
-		w.WriteHeader(http.StatusForbidden)
+		c.JSON(http.StatusForbidden,
+			gin.H{})
 		return
 	}
 
@@ -131,8 +127,9 @@ func UserInfoHandler(w http.ResponseWriter, r *http.Request) {
 		Msg:  "OK",
 		Data: user,
 	}
-	w.Write(resp.JSONBytes())
+	c.Data(http.StatusOK, "application/json", resp.JSONBytes())
 }
+
 
 // GenToken : 生成token
 func GenToken(username string) string {

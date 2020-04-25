@@ -198,8 +198,6 @@ func GetFileMetaHandler(c *gin.Context) {
 
 // FileQueryHandler : 查询批量的文件元信息
 func FileQueryHandler(c *gin.Context) {
-	r.ParseForm()
-
 	limitCnt, _ := strconv.Atoi(c.Request.FormValue("limit"))
 	username := c.Request.FormValue("username")
 	userFiles, err := dblayer.QueryUserFileMetas(username, limitCnt)
@@ -225,51 +223,43 @@ func FileQueryHandler(c *gin.Context) {
 }
 
 // FileMetaUpdateHandler ： 更新元信息接口(重命名)
-func FileMetaUpdateHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+func FileMetaUpdateHandler(c *gin.Context) {
 
-	opType := r.Form.Get("op")
-	fileSha1 := r.Form.Get("filehash")
-	username := r.Form.Get("username")
-	newFileName := r.Form.Get("filename")
+	opType := c.Request.FormValue("op")
+	fileSha1 := c.Request.FormValue("filehash")
+	username := c.Request.FormValue("username")
+	newFileName := c.Request.FormValue("filename")
 
 	if opType != "0" || len(newFileName) < 1 {
-		w.WriteHeader(http.StatusForbidden)
+		c.Status(http.StatusForbidden)
 		return
 	}
-	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
 	// 更新用户文件表tbl_user_file中的文件名，tbl_file的文件名不用修改
 	_ = dblayer.RenameFileName(username, fileSha1, newFileName)
 
 	// 返回最新的文件信息
 	userFile, err := dblayer.QueryUserFileMeta(username, fileSha1)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		c.Status(http.StatusInternalServerError)
 		return
 	}
 	data, err := json.Marshal(userFile)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		c.Status(http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	c.JSON(http.StatusOK, data)
 }
 
 // FileDeleteHandler : 删除文件及元信息
-func FileDeleteHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	username := r.Form.Get("username")
-	fileSha1 := r.Form.Get("filehash")
+func FileDeleteHandler(c *gin.Context) {
+	username := c.Request.FormValue("username")
+	fileSha1 := c.Request.FormValue("filehash")
 
 	// 删除本地文件
 	fm, err := meta.GetFileMetaDB(fileSha1)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		c.Status(http.StatusInternalServerError)
 		return
 	}
 	os.Remove(fm.FileLocation)
@@ -277,27 +267,26 @@ func FileDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	// 删除文件表中的一条记录
 	suc := dblayer.DeleteUserFile(username, fileSha1)
 	if !suc {
-		w.WriteHeader(http.StatusInternalServerError)
+		c.Status(http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	c.Status(http.StatusOK)
 }
 
 // TryFastUploadHandler : 尝试秒传接口
-func TryFastUploadHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+func TryFastUploadHandler(c *gin.Context) {
 
 	// 1. 解析请求参数
-	username := r.Form.Get("username")
-	filehash := r.Form.Get("filehash")
-	filename := r.Form.Get("filename")
-	filesize, _ := strconv.Atoi(r.Form.Get("filesize"))
+	username := c.Request.FormValue("username")
+	filehash := c.Request.FormValue("filehash")
+	filename := c.Request.FormValue("filename")
+	filesize, _ := strconv.Atoi(c.Request.FormValue("filesize"))
 
 	// 2. 从文件表中查询相同hash的文件记录
 	fileMeta, err := meta.GetFileMetaDB(filehash)
 	if err != nil {
 		fmt.Println(err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
+		c.Status(http.StatusInternalServerError)
 		return
 	}
 
@@ -307,7 +296,7 @@ func TryFastUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Code: -1,
 			Msg:  "秒传失败，请访问普通上传接口",
 		}
-		w.Write(resp.JSONBytes())
+		c.Data(http.StatusOK, "application/json", resp.JSONBytes())
 		return
 	}
 
@@ -319,13 +308,13 @@ func TryFastUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Code: 0,
 			Msg:  "秒传成功",
 		}
-		w.Write(resp.JSONBytes())
+		c.Data(http.StatusOK, "application/json", resp.JSONBytes())
 		return
 	}
 	resp := util.RespMsg{
 		Code: -2,
 		Msg:  "秒传失败，请稍后重试",
 	}
-	w.Write(resp.JSONBytes())
+	c.Data(http.StatusOK, "application/json", resp.JSONBytes())
 	return
 }
