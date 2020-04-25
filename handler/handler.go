@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -192,24 +195,33 @@ func GetFileMetaHandler(c *gin.Context) {
 
 
 
+
 // FileQueryHandler : 查询批量的文件元信息
-func FileQueryHandler(w http.ResponseWriter, r *http.Request) {
+func FileQueryHandler(c *gin.Context) {
 	r.ParseForm()
 
-	limitCnt, _ := strconv.Atoi(r.Form.Get("limit"))
-	username := r.Form.Get("username")
+	limitCnt, _ := strconv.Atoi(c.Request.FormValue("limit"))
+	username := c.Request.FormValue("username")
 	userFiles, err := dblayer.QueryUserFileMetas(username, limitCnt)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError,
+			gin.H{
+				"code": -1,
+				"msg":  "Query failed!",
+			})
 		return
 	}
 
 	data, err := json.Marshal(userFiles)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError,
+			gin.H{
+				"code": -2,
+				"msg":  "Query failed!",
+			})
 		return
 	}
-	w.Write(data)
+	c.Data(http.StatusOK, "application/json", data)
 }
 
 // FileMetaUpdateHandler ： 更新元信息接口(重命名)

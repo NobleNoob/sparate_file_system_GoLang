@@ -33,10 +33,10 @@ func GetFileMeta(filesha1 string) Filemeta{
 	return fileMetas[filesha1]
 }
 
-func GetFileMetaDB(filesha1 string) (Filemeta,error) {
+func GetFileMetaDB(filesha1 string) (*Filemeta,error) {
 	tfile,err := mydb.GetFileMeta(filesha1)
-	if err != nil {
-		return Filemeta{},err
+	if tfile !=nil || err != nil {
+		return nil, err
 	}
 	fmeta := Filemeta{
 		FileSha1: tfile.FileHash,
@@ -44,7 +44,7 @@ func GetFileMetaDB(filesha1 string) (Filemeta,error) {
 		FileSize: tfile.Filesize.Int64,
 		FileLocation:tfile.FileAddr.String,
 	}
-	return fmeta,nil
+	return &fmeta,nil
 }
 
 func GetLastFileMetas(count int) []Filemeta {
