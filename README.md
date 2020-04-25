@@ -1,4 +1,4 @@
-## FSS GO packages
+## FFS GO packages
 
 go get github.com/garyburd/redigo/redis
 
