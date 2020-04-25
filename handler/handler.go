@@ -14,49 +14,90 @@ import (
 	cfg "filestore-server/config"
 	dblayer "filestore-server/db"
 	"filestore-server/meta"
+	"filestore-server/mq"
 	"filestore-server/store/localS3"
 	"filestore-server/util"
 )
 
+func init() {
+	// 目录已存在
+	if _, err := os.Stat(cfg.TempLocalRootDir); err == nil {
+		return
+	}
+
+	// 尝试创建目录
+	err := os.MkdirAll(cfg.TempLocalRootDir, 0744)
+	if err != nil {
+		log.Println("Tmp folder creation failed")
+		os.Exit(1)
+	}
+}
+
+func GetUploadHandler(c *gin.Context) {
+	data, err := ioutil.ReadFile("./static/view/upload.html")
+	if err != nil {
+		c.String(404, `网页不存在`)
+		return
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+}
+
+
 // UploadHandler ： 处理文件上传
-func UploadHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		// 返回上传html页面
-		data, err := ioutil.ReadFile("./static/view/index.html")
+func PostUploadHandler(c *gin.Context) {
+		errCode := 0
+		defer func() {
+			if errCode < 0 {
+				c.JSON(http.StatusOK, gin.H{
+					"code": errCode,
+					"msg":  "Upload failed",
+				})
+			}
+		}()
+
+		// 从Form 表单获取文件信息
+		file, head, err := c.Request.FormFile("file")
 		if err != nil {
-			io.WriteString(w, "internel server error")
-			return
-		}
-		io.WriteString(w, string(data))
-	} else if r.Method == "POST" {
-		// 接收文件流及存储到本地目录
-		file, head, err := r.FormFile("file")
-		if err != nil {
-			fmt.Printf("Failed to get data, err:%s\n", err.Error())
+			fmt.Printf("Failed to get form data, err:%s\n", err.Error())
+			errCode = -1
 			return
 		}
 		defer file.Close()
 
+		// 把文件内容转为[]byte
+		buf := bytes.NewBuffer(nil)
+		if _, err := io.Copy(buf, file); err != nil {
+			fmt.Printf("Failed to get file data, err:%s\n", err.Error())
+			errCode = -2
+			return
+		}
+
+		// Init FileMeta
 		fileMeta := meta.Filemeta{
 			FileName: head.Filename,
-			FileLocation: cfg.TempLocalRootDir + head.Filename,
+			FileSha1: util.Sha1(buf.Bytes()),
+			FileSize: int64(len(buf.Bytes())),
 			UpdateTime: time.Now().Format("2006-01-02 15:04:05"),
 		}
 
+		// Write filemeta to local tmp file
+		fileMeta.FileLocation = cfg.TempLocalRootDir + fileMeta.FileSha1
 		newFile, err := os.Create(fileMeta.FileLocation)
 		if err != nil {
 			fmt.Printf("Failed to create file, err:%s\n", err.Error())
+			errCode = -3 // define error code for gin
 			return
 		}
 		defer newFile.Close()
 
-		fileMeta.FileSize, err = io.Copy(newFile, file)
-		if err != nil {
-			fmt.Printf("Failed to save data into file, err:%s\n", err.Error())
+		nByte, err := newFile.Write(buf.Bytes())
+		if int64(nByte) != fileMeta.FileSize || err != nil {
+			fmt.Printf("Failed to save data into file, err:%s\n, writtenSize:%s", err.Error(),nByte)
+			errCode = -4
 			return
 		}
 
-		newFile.Seek(0, 0)
+		newFile.Seek(0, 0) //从头读取文件
 		fileMeta.FileSha1 = util.FileSha1(newFile)
 
 		newFile.Seek(0, 0)
@@ -68,7 +109,7 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 				err = localS3.PutObject("test1", s3Path, data)
 				if err != nil {
 					fmt.Println(err.Error())
-					w.Write([]byte("Upload failed!"))
+					errCode = -5
 					return
 				}
 				fileMeta.FileLocation = s3Path
@@ -91,44 +132,65 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		// TODO: 处理异常情况，比如跳转到一个上传失败页面
+		// 更新文件记录至Mysql
 		_ = meta.SetFileMetaDB(fileMeta)
 
-		r.ParseForm()
-		username := r.Form.Get("username")
+		// 更新用户文件列表
+		username := c.Request.FormValue("username")
 		suc := dblayer.OnUserFileUploadFinished(username, fileMeta.FileSha1,
 			fileMeta.FileName, fileMeta.FileSize)
 		if suc {
-			http.Redirect(w, r, "/static/view/home.html", http.StatusFound)
+			c.Redirect(http.StatusFound, "/static/view/home.html")
 		} else {
-			w.Write([]byte("Upload Failed."))
+			errCode = -6
 		}
 	}
-}
+
 
 // UploadSucHandler : 上传已完成
-func UploadSucHandler(w http.ResponseWriter, r *http.Request) {
-	io.WriteString(w, "Upload finished!")
+func UploadSucHandler(c *gin.Context) {
+		c.JSON(http.StatusOK,
+		gin.H{
+			"code": 0,
+			"msg":  "Upload Finish!",
+		})
 }
 
 // GetFileMetaHandler : 获取文件元信息
-func GetFileMetaHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+func GetFileMetaHandler(c *gin.Context) {
 
-	filehash := r.Form["filehash"][0]
+	filehash := c.Request.FormValue("filehash")
 	fMeta, err := meta.GetFileMetaDB(filehash)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError,
+			gin.H{
+				"code": -2,
+				"msg":  "Upload failed!",
+			})
 		return
 	}
 
-	data, err := json.Marshal(fMeta)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+	if fMeta != nil {
+		data, err := json.Marshal(fMeta)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{
+					"code": -3,
+					"msg":  "Upload failed!",
+				})
+			return
+		}
+		c.Data(http.StatusOK, "application/json", data)
+	} else {
+		c.JSON(http.StatusOK,
+			gin.H{
+				"code": -4,
+				"msg":  "No such file",
+			})
 	}
-	w.Write(data)
 }
+
+
 
 // FileQueryHandler : 查询批量的文件元信息
 func FileQueryHandler(w http.ResponseWriter, r *http.Request) {
