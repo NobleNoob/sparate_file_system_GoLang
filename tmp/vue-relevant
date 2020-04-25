@@ -1,5 +1,0 @@
-npm init -y 
-npm install webpack  webpack-cli -D
-npm run build 
-npm install webpack-dev-server -D
-npm install node-sass -D
