@@ -4,56 +4,48 @@ import (
 "context"
 	"filestore-server/common"
 	"filestore-server/service/account/proto"
+	cfg "filestore-server/config"
+	dblayer "filestore-server/db"
 )
-type User struct {
 
+
+type User struct {}
+
+func (u *User) Signin(ctx context.Context, req *proto.ReqSignin, res *proto.RespSignin) error {
+	panic("implement me")
 }
 
-func Signup(ctx context.Context, req *proto.ReqSignup, res *proto.RespSignup) error {
+func (u *User) UserInfo(ctx context.Context, req *proto.ReqUserInfo, res *proto.RespUserInfo) error {
+	panic("implement me")
+}
+
+func (u *User) UserFiles(ctx context.Context, req *proto.ReqUserFile, res *proto.RespUserFile) error {
+	panic("implement me")
+}
+
+func (u *User) UserFileRename(ctx context.Context, req *proto.ReqUserFileRename, res *proto.RespUserFileRename) error {
+	panic("implement me")
+}
+
+func (u *User) Signup(ctx context.Context, req *proto.ReqSignup, res *proto.RespSignup) error {
 
 	username := req.Username
 	password := req.Password
+	encPasswd := util.Sha1([]byte(password + cfg.PasswordSalt))
 
-	encPasswd := util.Sha1([]byte(password + pwdSalt))
-
-	if len(username) < 3 || len(password) <5 {
+	if len(username) < 3 || len(password) < 5 {
 		res.Code = common.StatusParamInvalid
 		res.Message = "Param Invalid"
 		return nil
 	}
-
-	// 1. 校验用户名及密码
-	pwdChecked := dblayer.UserSignin(username, encPasswd)
-	if !pwdChecked {
-		c.JSON(http.StatusOK,gin.H{
-			"msg":"Login Failed",
-			"code": -1,
-		})
+	// 将用户信息注册到用户表中
+	suc := dblayer.UserSignUp(username, encPasswd)
+	if suc {
+		res.Code = common.StatusOK
+		res.Message = "Signup Successful"
+	} else {
+		res.Code = common.StatusRegisterFailed
+		res.Message = "Register Failed"
 	}
-
-	// 2. 生成访问凭证(token)
-	token := GenToken(username)
-	upRes := dblayer.UpdateToken(username, token)
-	if !upRes {
-		c.JSON(http.StatusOK,gin.H{
-			"msg":"Login Failed",
-			"code": -2,
-		})
-	}
-
-	// 3. 登录成功后重定向到首页
-	resp := util.RespMsg{
-		Code: 0,
-		Msg:  "OK",
-		Data: struct {
-			Token    string
-			Username string
-			Location string
-		}{
-			Token: token,
-			Username: username,
-			Location: "/static/view/home.html",
-		},
-	}
-	c.Data(http.StatusOK,"application/json",resp.JSONBytes())
+	return nil
 }
