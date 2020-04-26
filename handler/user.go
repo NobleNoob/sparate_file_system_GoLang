@@ -9,12 +9,10 @@ import (
 	"time"
 	dblayer "filestore-server/db"
 	"filestore-server/util"
+	cfg "filestore-server/config"
 )
 
-const (
-	// 用于加密的盐值(自定义)
-	pwdSalt = "*#890"
-)
+
 
 // PostSignupHandler 处理接口POST
 func PostSignupHandler(c *gin.Context) {
@@ -30,7 +28,7 @@ c.JSON(http.StatusOK,gin.H{
 return
 }
 // 对密码进行加盐及取Sha1值加密
-encPasswd := util.Sha1([]byte(passwd + pwdSalt))
+encPasswd := util.Sha1([]byte(passwd + cfg.PasswordSalt))
 // 将用户信息注册到用户表中
 suc := dblayer.UserSignUp(username, encPasswd)
 if suc {
@@ -60,7 +58,7 @@ func PostSignInHandler(c *gin.Context) {
 	username := c.Request.FormValue("username")
 	password := c.Request.FormValue("password")
 
-	encPasswd := util.Sha1([]byte(password + pwdSalt))
+	encPasswd := util.Sha1([]byte(password + cfg.PasswordSalt))
 
 	// 1. 校验用户名及密码
 	pwdChecked := dblayer.UserSignin(username, encPasswd)
