@@ -23,3 +23,7 @@ go get github.com/gin-contrib/cors
 go get github.com/micro/go-micro
 
 go get github.com/mitchellh/mapstructure
+
+## Go-micro Initlizate 
+
+{protoc --proto_path=service/account/proto --go_out=service/account/proto --micro_out=service/account/proto service/account/proto/user.proto}
