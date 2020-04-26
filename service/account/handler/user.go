@@ -1,11 +1,12 @@
 package handler
 
 import (
-"context"
+	"context"
 	"filestore-server/common"
-	"filestore-server/service/account/proto"
 	cfg "filestore-server/config"
 	dblayer "filestore-server/db"
+	"filestore-server/service/account/proto"
+	"filestore-server/util"
 )
 
 
@@ -24,7 +25,7 @@ func (u *User) UserFiles(ctx context.Context, req *proto.ReqUserFile, res *proto
 }
 
 func (u *User) UserFileRename(ctx context.Context, req *proto.ReqUserFileRename, res *proto.RespUserFileRename) error {
-	panic("implement me")
+			panic("implement me")
 }
 
 func (u *User) Signup(ctx context.Context, req *proto.ReqSignup, res *proto.RespSignup) error {
