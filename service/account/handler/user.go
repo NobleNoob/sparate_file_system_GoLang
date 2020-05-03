@@ -6,7 +6,7 @@ import (
 	cfg "filestore-server/config"
 	dblayer "filestore-server/db"
 	"filestore-server/service/account/proto"
-	"filestore-server/util"
+	util "filestore-server/util"
 )
 
 
@@ -32,21 +32,24 @@ func (u *User) Signup(ctx context.Context, req *proto.ReqSignup, res *proto.Resp
 
 	username := req.Username
 	password := req.Password
-	encPasswd := util.Sha1([]byte(password + cfg.PasswordSalt))
 
 	if len(username) < 3 || len(password) < 5 {
 		res.Code = common.StatusParamInvalid
 		res.Message = "Param Invalid"
 		return nil
 	}
+	encPassword := util.Sha1([]byte(password + cfg.PasswordSalt))
+
 	// 将用户信息注册到用户表中
-	suc := dblayer.UserSignUp(username, encPasswd)
+	suc := dblayer.UserSignUp(username, encPassword)
 	if suc {
 		res.Code = common.StatusOK
 		res.Message = "Signup Successful"
 	} else {
 		res.Code = common.StatusRegisterFailed
 		res.Message = "Register Failed"
+		println(encPassword,username)
+
 	}
 	return nil
 }

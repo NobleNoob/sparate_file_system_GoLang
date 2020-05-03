@@ -38,6 +38,7 @@
             <td><br></td>
             <td></td>
           </tr>
+
           <tr style="margin-bottom: 20px;">
             <td>
               <span class="p">*</span>
@@ -95,10 +96,10 @@
       },
       success: function (resp) {
         if (resp.code == 10000) {
-          alert("注册成功");
+          alert("Signup success");
           window.location.href = "/user/signin";
         } else {
-          alert("注册失败");
+          alert("Signup failed");
         }
       }
     });
