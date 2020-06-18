@@ -1,16 +1,14 @@
 package main
 
 import (
-	"io/ioutil"
-
-	"encoding/json"
-	"filestore-server/config"
-	dblayer "filestore-server/db"
-	"filestore-server/mq"
-	"filestore-server/store/localS3"
-	"log"
-
-	"os"
+"bufio"
+"encoding/json"
+"filestore-server/config"
+dblayer "filestore-server/db"
+"filestore-server/mq"
+"filestore-server/store/localS3"
+"log"
+"os"
 )
 
 // ProcessTransfer : 处理文件转移
@@ -30,12 +28,9 @@ func ProcessTransfer(msg []byte) bool {
 		return false
 	}
 
-	data, _ := ioutil.ReadAll(fin)
-
-	err = localS3.PutObject(
-		"test1",
+	err = localS3.Bucket().PutObject(
 		pubData.DestLocation,
-		data)
+		bufio.NewReader(fin))
 	if err != nil {
 		log.Println(err.Error())
 		return false

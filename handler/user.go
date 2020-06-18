@@ -2,81 +2,84 @@ package handler
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
-
 	// "io/ioutil"
 	"net/http"
 	"time"
 	dblayer "filestore-server/db"
 	"filestore-server/util"
-	cfg "filestore-server/config"
 )
 
+const (
+	// 用于加密的盐值(自定义)
+	pwdSalt = "*#890"
+)
 
+// SignupHandler : 处理用户注册请求
+func SignupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		// data, err := ioutil.ReadFile("./static/view/signup.html")
+		// if err != nil {
+		// 	w.WriteHeader(http.StatusInternalServerError)
+		// 	return
+		// }
+		// w.Write(data)
+		http.Redirect(w, r, "/static/view/signup.html", http.StatusFound)
+		return
+	}
+	r.ParseForm()
 
-// PostSignupHandler 处理接口POST
-func PostSignupHandler(c *gin.Context) {
+	username := r.Form.Get("username")
+	passwd := r.Form.Get("password")
 
-username := c.Request.FormValue("username")
-passwd := c.Request.FormValue("password")
+	if len(username) < 3 || len(passwd) < 5 {
+		w.Write([]byte("Invalid parameter"))
+		return
+	}
 
-if len(username) < 3 || len(passwd) < 5 {
-c.JSON(http.StatusOK,gin.H{
-	"msg":"Invalid parameter",
-	"code": -1,
-})
-return
-}
-// 对密码进行加盐及取Sha1值加密
-encPasswd := util.Sha1([]byte(passwd + cfg.PasswordSalt))
-// 将用户信息注册到用户表中
-suc := dblayer.UserSignUp(username, encPasswd)
-if suc {
-	c.JSON(http.StatusOK,gin.H{
-		"msg":"Signup Success",
-		"code": 0,
-	})} else {
-	c.JSON(http.StatusOK,gin.H{
-		"msg":"Signup Failed",
-		"code": -2,
-	})}
-}
-
-// GetSignupHandler : GET获取注册
-func GetSignupHandler(c *gin.Context) {
-		c.Redirect(http.StatusFound, "/static/view/signup.html")
-}
-
-// GetSignInHandler : 登录接口
-func GetSignInHandler(c *gin.Context) {
-	c.Redirect(http.StatusFound, "/static/view/signin.html")
+	// 对密码进行加盐及取Sha1值加密
+	encPasswd := util.Sha1([]byte(passwd + pwdSalt))
+	// 将用户信息注册到用户表中
+	suc := dblayer.UserSignUp(username, encPasswd)
+	if suc {
+		w.Write([]byte("SUCCESS"))
+	} else {
+		w.Write([]byte("FAILED"))
+	}
 }
 
-// PostSignInHandler : 改写登陆接口POST method
-func PostSignInHandler(c *gin.Context) {
+// SignInHandler : 登录接口
+//noinspection GoUnresolvedReference
+func SignInHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		// data, err := ioutil.ReadFile("./static/view/signin.html")
+		// if err != nil {
+		// 	w.WriteHeader(http.StatusInternalServerError)
+		// 	return
+		// }
+		// w.Write(data)
+		http.Redirect(w, r, "/static/view/signin.html", http.StatusFound)
+		return
+	}
 
-	username := c.Request.FormValue("username")
-	password := c.Request.FormValue("password")
+	r.ParseForm()
+	username := r.Form.Get("username")
+	password := r.Form.Get("password")
 
-	encPasswd := util.Sha1([]byte(password + cfg.PasswordSalt))
+	encPasswd := util.Sha1([]byte(password + pwdSalt))
 
 	// 1. 校验用户名及密码
 	pwdChecked := dblayer.UserSignin(username, encPasswd)
 	if !pwdChecked {
-		c.JSON(http.StatusOK,gin.H{
-			"msg":"Login Failed",
-			"code": -1,
-		})
+		w.Write([]byte("FAILED"))
+		return
 	}
 
 	// 2. 生成访问凭证(token)
 	token := GenToken(username)
 	upRes := dblayer.UpdateToken(username, token)
 	if !upRes {
-		c.JSON(http.StatusOK,gin.H{
-			"msg":"Login Failed",
-			"code": -2,
-		})
+		w.Write([]byte("FAILED"))
+		return
 	}
 
 	// 3. 登录成功后重定向到首页
@@ -85,24 +88,25 @@ func PostSignInHandler(c *gin.Context) {
 		Code: 0,
 		Msg:  "OK",
 		Data: struct {
-			Token    string
-			Username string
 			Location string
+			Username string
+			Token    string
 		}{
-			Token: token,
+			Location: "http://" + r.Host + "/static/view/home.html",
 			Username: username,
-			Location: "/static/view/home.html",
+			Token:    token,
 		},
 	}
-	c.Data(http.StatusOK,"application/json",resp.JSONBytes())
+	w.Write(resp.JSONBytes())
 }
 
 // UserInfoHandler ： 查询用户信息
 //noinspection GoUnresolvedReference
-func UserInfoHandler(c *gin.Context) {
+func UserInfoHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. 解析请求参数
-	username := c.Request.FormValue("username")
-	//	token := c.Request.FormValue("token")
+	r.ParseForm()
+	username := r.Form.Get("username")
+	//	token := r.Form.Get("token")
 
 	// // 2. 验证token是否有效
 	// isValidToken := IsTokenValid(token)
@@ -114,8 +118,7 @@ func UserInfoHandler(c *gin.Context) {
 	// 3. 查询用户信息
 	user, err := dblayer.GetUserInfo(username)
 	if err != nil {
-		c.JSON(http.StatusForbidden,
-			gin.H{})
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
@@ -125,9 +128,8 @@ func UserInfoHandler(c *gin.Context) {
 		Msg:  "OK",
 		Data: user,
 	}
-	c.Data(http.StatusOK, "application/json", resp.JSONBytes())
+	w.Write(resp.JSONBytes())
 }
-
 
 // GenToken : 生成token
 func GenToken(username string) string {
@@ -143,9 +145,7 @@ func IsTokenValid(token string) bool {
 	if len(token) != 40 {
 		return false
 	}
-
 	// TODO: 判断token的时效性，是否过期
-	// example，假设token的有效期为1天   (根据同学们反馈完善, 相对于视频有所更新)
 	tokenTS := token[:8]
 	if util.Hex2Dec(tokenTS) < time.Now().Unix()-86400 {
 		return false

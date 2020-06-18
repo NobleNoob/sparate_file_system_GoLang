@@ -34,7 +34,6 @@ func StartConsume(qName, cName string, callback func(msg []byte) bool) {
 	// 接收done的信号, 没有信息过来则会一直阻塞，避免该函数退出
 	<-done
 
-	// 关闭通道
 	channel.Close()
 }
 

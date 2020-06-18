@@ -19,15 +19,14 @@ type User_token struct {
 	Token 		string
 }
 
-func UserSignUp(username string,passwd string) bool{
+func UserSignUp(username string,password string) bool{
 	stmt,err := mydb.DBconn().Prepare("insert ignore into tbl_user (`user_name`,`user_pwd`) values (?,?)")
 	if err != nil {
 		fmt.Printf("Failed to insert,error:" + err.Error())
 		return false
 	}
 	defer stmt.Close()
-
-	ret,err:=stmt.Exec(username,passwd)
+	ret,err:=stmt.Exec(username,password)
 	if err != nil {
 		fmt.Printf("Failed to insert,error:" + err.Error())
 		return false

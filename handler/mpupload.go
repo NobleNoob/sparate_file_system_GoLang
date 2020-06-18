@@ -3,7 +3,6 @@ package handler
 import (
 	"filestore-server/util"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"math"
 	"net/http"
 	"os"
@@ -45,18 +44,14 @@ func init() {
 }
 
 // InitialMultipartUploadHandler : 初始化分块上传
-func InitialMultipartUploadHandler(c *gin.Context) {
+func InitialMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. 解析用户请求参数
-	username := c.Request.FormValue("username")
-	filehash := c.Request.FormValue("filehash")
-	filesize, err := strconv.Atoi(c.Request.FormValue("filesize"))
+	r.ParseForm()
+	username := r.Form.Get("username")
+	filehash := r.Form.Get("filehash")
+	filesize, err := strconv.Atoi(r.Form.Get("filesize"))
 	if err != nil {
-		c.JSON(
-			http.StatusOK,
-			gin.H{
-				"code": -1,
-				"msg":  "params invalid",
-			})
+		w.Write(util.NewRespMsg(-1, "params invalid", nil).JSONBytes())
 		return
 	}
 
@@ -80,21 +75,16 @@ func InitialMultipartUploadHandler(c *gin.Context) {
 	rConn.Do("HSET", "MP_"+upInfo.UploadID, "filesize", upInfo.FileSize)
 
 	// 5. 将响应初始化数据返回到客户端
-	c.JSON(
-		http.StatusOK,
-		gin.H{
-			"code": 0,
-			"msg":  "OK",
-			"data": upInfo,
-		})
+	w.Write(util.NewRespMsg(0, "OK", upInfo).JSONBytes())
 }
 
 // UploadPartHandler : 上传文件分块
-func UploadPartHandler(c *gin.Context) {
-
+func UploadPartHandler(w http.ResponseWriter, r *http.Request) {
+	// 1. 解析用户请求参数
+	r.ParseForm()
 	//	username := r.Form.Get("username")
-	uploadID := c.Request.FormValue("uploadid")
-	chunkIndex := c.Request.FormValue("index")
+	uploadID := r.Form.Get("uploadid")
+	chunkIndex := r.Form.Get("index")
 
 	// 2. 获得redis连接池中的一个连接
 	rConn := rPool.RedisPool().Get()
@@ -105,13 +95,7 @@ func UploadPartHandler(c *gin.Context) {
 	os.MkdirAll(path.Dir(fpath), 0744)
 	fd, err := os.Create(fpath)
 	if err != nil {
-		c.JSON(
-			http.StatusOK,
-			gin.H{
-				"code": 0,
-				"msg":  "Upload part failed",
-				"data": nil,
-			})
+		w.Write(util.NewRespMsg(-1, "Upload part failed", nil).JSONBytes())
 		return
 	}
 	defer fd.Close()
@@ -119,7 +103,7 @@ func UploadPartHandler(c *gin.Context) {
 	// 读取带宽 5M
 	buf := make([]byte, 5 * 1024*1024)
 	for {
-		n, err := c.Request.Body.Read(buf)
+		n, err := r.Body.Read(buf)
 		fd.Write(buf[:n])
 		if err != nil {
 			break
@@ -130,22 +114,18 @@ func UploadPartHandler(c *gin.Context) {
 	rConn.Do("HSET", "MP_"+uploadID, "chkidx_"+chunkIndex, 1)
 
 	// 5. 返回处理结果到客户端
-	c.JSON(
-		http.StatusOK,
-		gin.H{
-			"code": 0,
-			"msg":  "OK",
-			"data": nil,
-		})}
+	w.Write(util.NewRespMsg(0, "OK", nil).JSONBytes())
+}
 
 // CompleteUploadHandler : 通知上传合并
-func CompleteUploadHandler(c *gin.Context) {
+func CompleteUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. 解析请求参数
-	uploadID := c.Request.FormValue("uploadid")
-	username := c.Request.FormValue("username")
-	filehash := c.Request.FormValue("filehash")
-	filesize := c.Request.FormValue("filesize")
-	filename := c.Request.FormValue("filename")
+	r.ParseForm()
+	uploadID := r.Form.Get("uploadid")
+	username := r.Form.Get("username")
+	filehash := r.Form.Get("filehash")
+	filesize := r.Form.Get("filesize")
+	filename := r.Form.Get("filename")
 
 	// 2. 获得redis连接池中的一个连接
 	rConn := rPool.RedisPool().Get()
@@ -154,13 +134,7 @@ func CompleteUploadHandler(c *gin.Context) {
 	// 3. 通过uploadid查询redis并判断是否所有分块上传完成
 	data, err := redis.Values(rConn.Do("HGETALL", "MP_"+uploadID))
 	if err != nil {
-		c.JSON(
-			http.StatusOK,
-			gin.H{
-				"code": -1,
-				"msg":  "OK",
-				"data": nil,
-			})
+		w.Write(util.NewRespMsg(-1, "complete upload failed", nil).JSONBytes())
 		return
 	}
 	totalCount := 0
@@ -176,25 +150,12 @@ func CompleteUploadHandler(c *gin.Context) {
 	}
 	if totalCount != chunkCount {
 		fmt.Printf("chuncks count invalid: %d %d\n", totalCount, chunkCount)
-		c.JSON(
-			http.StatusOK,
-			gin.H{
-				"code": -2,
-				"msg":  "OK",
-				"data": nil,
-			})
+		w.Write(util.NewRespMsg(-2, "invalid request", nil).JSONBytes())
 		return
 	}
 
 	if mergeSuc := util.MergeChuncksByShell(ChunkDir+uploadID, MergeDir+filehash, filehash); !mergeSuc {
-		c.JSON(
-			http.StatusInternalServerError,
-			gin.H{
-				"code": -3,
-				"msg": "complete upload failed",
-				"data": nil,
-			})
-		//w.Write(util.NewRespMsg(-3, "complete upload failed", nil).JSONBytes())
+		w.Write(util.NewRespMsg(-3, "complete upload failed", nil).JSONBytes())
 		return
 	}
 
@@ -209,30 +170,19 @@ func CompleteUploadHandler(c *gin.Context) {
 	}
 
 	// 6. 响应处理结果
-	c.JSON(
-		http.StatusOK,
-		gin.H{
-			"code": 0,
-			"msg":  "OK",
-			"data": nil,
-		})
+	w.Write(util.NewRespMsg(0, "OK", nil).JSONBytes())
 }
 
 // CancelUploadHandler : 通知取消上传
-func CancelUploadHandler(c *gin.Context) {
+func CancelUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. 解析用户请求参数
-	username := c.Request.FormValue("username")
-	uploadID := c.Request.FormValue("uploadid")
+	r.ParseForm()
+	username := r.Form.Get("username")
+	uploadID := r.Form.Get("uploadid")
 	if len(uploadID) <= len(username) {
-		resp := util.RespMsg{
-			Code: -1,
-			Msg:  "params invalid",
-			Data: nil,
-		}
-		c.Data(http.StatusInternalServerError, "application/json", resp.JSONBytes())
+		w.Write(util.NewRespMsg(-1, "params invalid", nil).JSONBytes())
 		return
 	}
-
 
 	// 2. 获得redis的一个连接
 	rConn := rPool.RedisPool().Get()
@@ -241,12 +191,7 @@ func CancelUploadHandler(c *gin.Context) {
 	// 3. 检查uploadID是否存在, 并尝试删除upload信息
 	data, err := rConn.Do("del", "MP_"+uploadID)
 	if err != nil {
-		resp := util.RespMsg{
-			Code: -2,
-			Msg: "cancel upload failed",
-			Data: nil,
-		}
-		c.Data(http.StatusInternalServerError, "application/json", resp.JSONBytes())
+		w.Write(util.NewRespMsg(-2, "cancel upload failed", nil).JSONBytes())
 		return
 	}
 
@@ -257,21 +202,8 @@ func CancelUploadHandler(c *gin.Context) {
 	}
 
 	if res, ok := data.(int64); !ok || res != 1 {
-		resp := util.RespMsg{
-			Code: -3,
-			Msg: "cancel upload failed",
-			Data: nil,
-		}
-		c.Data(http.StatusInternalServerError, "application/json", resp.JSONBytes())
+		w.Write(util.NewRespMsg(-3, "cancel upload failed", nil).JSONBytes())
 		return
 	}
-
-
-	c.JSON(
-		http.StatusOK,
-		gin.H{
-			"code": 0,
-			"msg":  "OK",
-			"data": nil,
-		})
+	w.Write(util.NewRespMsg(0, "OK", nil).JSONBytes())
 }
